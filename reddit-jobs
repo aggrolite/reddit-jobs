@@ -1,0 +1,88 @@
+#!/usr/bin/env python
+
+import re
+import pylibmc
+import logging
+import smtplib
+import urllib.request
+from bs4 import BeautifulSoup
+from pprint import pformat
+from optparse import OptionParser
+
+cache = pylibmc.Client(['127.0.0.1'], binary = True, behaviors = {'tcp_nodelay': True, 'ketama': True})
+
+def extract_job_details(job):
+    job_title = job.find('a', href=True, attrs={'class':'posting-title'})
+
+    if not job_title:
+        raise Exception('Failed to extract job title.')
+
+    job_id = re.search(r"([\w-]+)$", job_title['href'])
+    
+    job_name = job_title.find('h5', text=True)
+
+    if not (job_id and job_name):
+        raise Exception('Failed to extract job ID and name.')
+        
+    return {'id': job_id.group(0), 'name': job_name.string, 'url': job_title['href']}
+
+def find_new_postings(postings):
+
+    cached_jobs = cache.get('jobs') or []
+    posted_jobs = []
+
+    for job in postings:
+        posted_jobs.append(extract_job_details(job))
+
+    logging.debug("cached jobs: \n%s", pformat(cached_jobs))
+    logging.debug("current jobs posted: \n%s", pformat(posted_jobs))
+    cache.set('jobs', posted_jobs)
+
+    # build a list of newly-discovered jobs
+    new_jobs = [pj for pj in posted_jobs if pj['id'] not in map(lambda cj: cj['id'], cached_jobs)]
+
+    logging.debug('new jobs posted: \n%s', pformat(new_jobs))
+
+    return new_jobs
+
+def send_report(new_jobs, to_addr):
+    from_addr = 'reddit-jobs@localhost'
+    msg = "From: %s\r\nTo: %s\r\nSubject: New jobs at reddit!\r\n" % (from_addr, to_addr)
+
+    for job in new_jobs:
+        msg = msg + "Position: %s\r\nApply: %s\r\n\r\n" % (job['name'], job['url'])
+        logging.debug("email message:\n%s" % msg)
+
+    server = smtplib.SMTP('localhost')
+    server.set_debuglevel(1)
+    server.sendmail(from_addr, to_addr, msg)
+    server.quit()
+
+def main():
+    parser = OptionParser()
+    parser.add_option('-e', '--email', dest='email', help='e-mail to receive jobs', default=None)
+    parser.add_option('-c', '--clear', dest='clear', help='clear cache before crawling', action="store_true")
+    (options, args) = parser.parse_args()
+
+    if options.clear:
+        cache.delete('jobs')
+
+    if not options.email:
+        raise Exception('Must provide email address with --email or -e')
+
+    # TODO allow user to set logging level
+    #logging.basicConfig(level=logging.DEBUG)
+
+    url = 'https://jobs.lever.co/reddit'
+    req = urllib.request.urlopen(url)
+
+    soup = BeautifulSoup(req.read().decode('utf-8'), 'lxml')
+    postings = soup.select('div.content div.postings-group > div.posting')
+
+    # TODO detect an empty job listings page
+    if postings:
+        new_jobs = find_new_postings(postings)
+        if new_jobs:
+            send_report(new_jobs, options.email)
+
+if __name__=='__main__':main()
