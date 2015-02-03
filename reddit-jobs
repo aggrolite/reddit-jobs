@@ -18,12 +18,12 @@ def extract_job_details(job):
         raise Exception('Failed to extract job title.')
 
     job_id = re.search(r"([\w-]+)$", job_title['href'])
-    
+
     job_name = job_title.find('h5', text=True)
 
     if not (job_id and job_name):
         raise Exception('Failed to extract job ID and name.')
-        
+
     return {'id': job_id.group(0), 'name': job_name.string, 'url': job_title['href']}
 
 def find_new_postings(postings):
@@ -54,7 +54,7 @@ def send_report(new_jobs, to_addr):
         logging.debug("email message:\n%s" % msg)
 
     server = smtplib.SMTP('localhost')
-    server.set_debuglevel(1)
+    #server.set_debuglevel(1)
     server.sendmail(from_addr, to_addr, msg)
     server.quit()
 
