@@ -2,7 +2,7 @@
 Receive e-mail notifying new jobs at Reddit.
 
 # Description
-This is a script I wrote in Python which sends a notification via email when Reddit has posted new jobs at [jobs.level.com/reddit](https://jobs.lever.co/reddit).
+This is a script I wrote in Python which sends a notification via email when Reddit has posted new jobs at [jobs.level.com/reddit](https://jobs.lever.co/reddit). This script is intended to be run as a daily cron job.
 
 Running the script for the first time will produce the following effects:
 
